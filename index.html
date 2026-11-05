@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="description" content="Screw Puzzle — unscrew colorful plates layer by layer, fill the tray, match 3 to clear. Free HTML5 puzzle game.">
+<title>Screw Puzzle · Unscrew &amp; Sort</title>
+<script>
+// 平台 SDK 按域名条件加载（独立运行时完全不加载，游戏行为不变）
+(function () {
+  var host = location.hostname || "";
+  try {
+    if (host.indexOf("crazygames") !== -1) {
+      var s1 = document.createElement("script");
+      s1.src = "https://sdk.crazygames.com/crazygames-sdk-v3.js";
+      s1.onload = function () {
+        if (window.CrazyGames && window.CrazyGames.SDK) {
+          window.CrazyGames.SDK.init().then(function () {
+            try { window.CrazyGames.SDK.game.loadingStart(); } catch (e) {}
+            window.addEventListener("load", function () { try { window.CrazyGames.SDK.game.loadingStop(); } catch (e) {} });
+          }).catch(function () {});
+        }
+      };
+      document.head.appendChild(s1);
+      window.__portal = "crazygames";
+    } else if (host.indexOf("gamedistribution") !== -1 || host.indexOf("html5.gamedistribution.com") !== -1 || host.indexOf("gd.games") !== -1) {
+      var s2 = document.createElement("script");
+      s2.src = "https://sdk.gamedistribution.com/v2/main.min.js";
+      document.head.appendChild(s2);
+      window.__portal = "gamedistribution";
+    }
+  } catch (e) {}
+})();
+</script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; background:#101018; font-family:-apple-system,"Segoe UI","PingFang SC",sans-serif; }
+  #wrap { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  #hud { width:100%; max-width:480px; display:flex; justify-content:space-between; align-items:center; padding:8px 12px; color:#e8e8f2; gap:6px; }
+  .stat { text-align:center; min-width:52px; }
+  .stat .label { font-size:10px; color:#8a8aa8; letter-spacing:1px; }
+  .stat .val { font-size:18px; font-weight:800; }
+  .btn { background:#23233c; color:#dfe3ff; border:1px solid #3a3a5c; border-radius:10px; padding:8px 10px; font-size:13px; font-weight:700; cursor:pointer; }
+  .btn:active { transform:scale(.95); }
+  .btn:disabled { opacity:.35; }
+  #title { font-size:13px; font-weight:800; color:#ffb54d; letter-spacing:2px; }
+  #stage { position:relative; }
+  canvas { display:block; border-radius:14px; touch-action:none; background:#181826; }
+  #overlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(8,8,16,.78); z-index:5; }
+  #panel { background:#1c1c30; border:1px solid #34345a; border-radius:18px; padding:26px 34px; text-align:center; color:#fff; min-width:240px; }
+  #panel h2 { font-size:22px; margin-bottom:6px; }
+  #panel p { color:#9a9ac0; font-size:13px; margin-bottom:10px; }
+  #panel .stars { font-size:34px; letter-spacing:6px; color:#ffd76a; margin:6px 0 14px; }
+  #panel .btnrow { display:flex; gap:10px; justify-content:center; }
+  #mainBtn { background:linear-gradient(135deg,#ff9a3c,#ff5a5a); color:#fff; border:none; border-radius:12px; padding:12px 28px; font-size:15px; font-weight:800; cursor:pointer; }
+  #ghostBtn { background:#2a2a46; color:#cfd3f6; border:none; border-radius:12px; padding:12px 20px; font-size:15px; font-weight:700; cursor:pointer; }
+  #levelSel { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; background:#12121e; z-index:6; padding:14px; overflow-y:auto; }
+  #levelSel h1 { color:#ffb54d; font-size:22px; letter-spacing:3px; margin:8px 0 2px; }
+  #levelSel .sub { color:#8a8aa8; font-size:12px; margin-bottom:12px; }
+  #grid { display:grid; grid-template-columns:repeat(5,64px); gap:10px; justify-content:center; padding-bottom:24px; }
+  .lv { width:64px; height:58px; border-radius:12px; border:1px solid #34345a; background:#1d1d33; color:#e8e8f2; font-size:17px; font-weight:800; cursor:pointer; position:relative; }
+  .lv .st { position:absolute; bottom:2px; left:0; right:0; font-size:9px; letter-spacing:1px; color:#ffd76a; }
+  .lv.locked { opacity:.32; }
+  #footer { color:#55556e; font-size:11px; padding:6px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <button class="btn" id="menuBtn" title="Levels">&#9776;</button>
+    <div class="stat"><div class="label">LEVEL</div><div class="val" id="level">1</div></div>
+    <div class="stat"><div class="label">SCORE</div><div class="val" id="score">0</div></div>
+    <div class="stat"><div class="label">TIME</div><div class="val" id="time">0</div></div>
+    <button class="btn" id="slotBtn" title="Add one tray slot">+1</button>
+    <button class="btn" id="resetBtn" title="Restart level">&#8635;</button>
+    <button class="btn" id="muteBtn" title="Sound">&#9835;</button>
+  </div>
+  <div id="stage">
+    <canvas id="game"></canvas>
+    <div id="overlay"><div id="panel">
+      <h2 id="ovTitle">Level Complete!</h2>
+      <p id="ovText">All plates cleared</p>
+      <div class="stars" id="ovStars"></div>
+      <div class="btnrow">
+        <button id="ghostBtn">Levels</button>
+        <button id="mainBtn">Next</button>
+      </div>
+    </div></div>
+    <div id="levelSel">
+      <h1>SCREW PUZZLE</h1>
+      <div class="sub">Tap a screw to unscrew it. Covered screws must wait. Match 3 of a color to clear the tray.</div>
+      <div id="grid"></div>
+    </div>
+  </div>
+  <div id="footer">Screw Puzzle — a free puzzle game</div>
+</div>
+<script>
+"use strict";
+/* ===================== 纯逻辑部分（可脱离 DOM 单测） ===================== */
+var SP_MAX_COLORS = 7;
+var SP_COLORS = ["#ff5a5a","#4f8cff","#35c56f","#ffc93c","#a55eea","#ff8a3c","#2ec4d6"];
+var SP_BASE_CAP = 8;          // 基础槽容量（+1 道具后为 9）
+var FIELD = { x0: 22, y0: 46, x1: 458, y1: 560 }; // 板子活动区域
+
+// 点是否在板子内部（圆 / 轴对齐圆角条近似为矩形）
+function spPointInBoard(b, x, y) {
+  if (b.shape === "circle") {
+    var dx = x - b.x, dy = y - b.y;
+    return dx * dx + dy * dy <= b.r * b.r;
+  }
+  return x >= b.x - b.w / 2 && x <= b.x + b.w / 2 && y >= b.y - b.h / 2 && y <= b.y + b.h / 2;
+}
+
+// 压住判定：螺丝点是否被某个更高层（数组下标更大 = 更上层）且存活的板子覆盖
+function spScrewCovered(boards, alive, bi, si) {
+  var s = boards[bi].screws[si];
+  for (var j = bi + 1; j < boards.length; j++) {
+    if (!alive[j]) continue;
+    if (spPointInBoard(boards[j], s.x, s.y)) return true;
+  }
+  return false;
+}
+
+// 三消清槽：加入一颗螺丝，若同色凑满 3 颗则移除其中 3 颗，返回是否消除
+function spTrayPush(tray, color) {
+  tray.push(color);
+  var cnt = 0, i;
+  for (i = 0; i < tray.length; i++) if (tray[i] === color) cnt++;
+  if (cnt >= 3) {
+    var removed = 0;
+    for (i = tray.length - 1; i >= 0 && removed < 3; i--) {
+      if (tray[i] === color) { tray.splice(i, 1); removed++; }
+    }
+    return true;
+  }
+  return false;
+}
+
+// 统计槽内（含飞行中）某色颗数
+function spCountColor(tray, flying, color) {
+  var n = 0, i;
+  for (i = 0; i < tray.length; i++) if (tray[i] === color) n++;
+  if (flying) for (i = 0; i < flying.length; i++) if (!flying[i].landed && flying[i].color === color) n++;
+  return n;
+}
+// 槽满时是否仍有救：存在某颗未被压住的螺丝，其颜色在槽内已有 2 颗（拧入即三消腾位）
+function spHasClearMove(boards, alive, tray) {
+  for (var i = boards.length - 1; i >= 0; i--) {
+    if (!alive[i]) continue;
+    for (var k = 0; k < boards[i].screws.length; k++) {
+      if (spScrewCovered(boards, alive, i, k)) continue;
+      if (spCountColor(tray, null, boards[i].screws[k].color) >= 2) return true;
+    }
+  }
+  return false;
+}
+
+// 关卡参数：板 3→10、颜色 3→7、最大层数 2→4
+function spLevelParams(L) {
+  var t = (L - 1) / 59;
+  return {
+    boards: 3 + Math.round(7 * t),
+    colors: 3 + Math.round(4 * t),
+    layers: 2 + Math.round(2 * t)
+  };
+}
+
+// 伪随机（可复现，便于测试）
+function spRng(seed) {
+  var s = seed >>> 0;
+  return function () {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+// 生成一关：数组顺序 = 层叠顺序，下标大者在上面。
+// 生成顺序自下而上，因此按“先上后下”拧出天然可解；
+// 颜色配额均为 3 的倍数，保证存在不溢槽的可行顺序（贪心模拟校验，失败则重生成）。
+function spGenLevel(L, seed) {
+  var P = spLevelParams(L);
+  for (var attempt = 0; attempt < 60; attempt++) {
+    var lv = spTryGen(L, P, (seed + attempt * 7919) >>> 0);
+    if (lv && spGreedySolvable(lv.boards, SP_BASE_CAP)) return lv;
+  }
+  // 兜底：极端情况下退化为最简单布局
+  var fb = spTryGen(1, spLevelParams(1), seed);
+  return fb;
+}
+
+function spTryGen(L, P, seed) {
+  var rnd = spRng(seed);
+  var boards = [];
+  var i, k;
+  for (i = 0; i < P.boards; i++) {
+    var layer = Math.floor(rnd() * P.layers); // 0..layers-1，同层互不遮挡判定（只比下标）
+    var shape = rnd() < 0.5 ? "circle" : "bar";
+    var b;
+    if (shape === "circle") {
+      var r = 44 + rnd() * 22;
+      b = { shape: "circle", r: r, x: 0, y: 0, layer: layer, screws: [] };
+      b.x = FIELD.x0 + r + rnd() * (FIELD.x1 - FIELD.x0 - 2 * r);
+      b.y = FIELD.y0 + r + rnd() * (FIELD.y1 - FIELD.y0 - 2 * r);
+    } else {
+      var w = 120 + rnd() * 90, h = 48 + rnd() * 14;
+      b = { shape: "bar", w: w, h: h, x: 0, y: 0, layer: layer, screws: [] };
+      b.x = FIELD.x0 + w / 2 + rnd() * (FIELD.x1 - FIELD.x0 - w);
+      b.y = FIELD.y0 + h / 2 + rnd() * (FIELD.y1 - FIELD.y0 - h);
+    }
+    // 每板 1-3 颗螺丝（板数多的关卡减少单板螺丝避免总量爆炸）
+    var ns = 1 + Math.floor(rnd() * (P.boards >= 7 ? 2 : 3));
+    for (k = 0; k < ns; k++) {
+      var sx, sy;
+      if (b.shape === "circle") {
+        var a = rnd() * Math.PI * 2, rr = b.r * (0.35 + rnd() * 0.45);
+        sx = b.x + Math.cos(a) * rr; sy = b.y + Math.sin(a) * rr;
+      } else {
+        sx = b.x + (rnd() * 2 - 1) * (b.w / 2 - 20);
+        sy = b.y + (rnd() * 2 - 1) * (b.h / 2 - 14);
+      }
+      b.screws.push({ x: sx, y: sy, color: 0 });
+    }
+    boards.push(b);
+  }
+  // 先保证总螺丝数 >= 颜色数*3（每种颜色至少一组），否则配额池会越界
+  var total = 0;
+  for (i = 0; i < boards.length; i++) total += boards[i].screws.length;
+  var need = P.colors * 3;
+  while (total < need) {
+    var tb = boards[Math.floor(rnd() * boards.length)];
+    var tx, ty;
+    if (tb.shape === "circle") {
+      var ta = rnd() * Math.PI * 2, tr = tb.r * (0.35 + rnd() * 0.45);
+      tx = tb.x + Math.cos(ta) * tr; ty = tb.y + Math.sin(ta) * tr;
+    } else {
+      tx = tb.x + (rnd() * 2 - 1) * (tb.w / 2 - 20);
+      ty = tb.y + (rnd() * 2 - 1) * (tb.h / 2 - 14);
+    }
+    tb.screws.push({ x: tx, y: ty, color: 0 });
+    total++;
+  }
+  // 总螺丝数调成 3 的倍数（在第一块板上增删）
+  var fix = (3 - total % 3) % 3; // 需要补的颗数
+  if (fix > 0) {
+    var nb = boards[0];
+    if (nb.screws.length >= 3 && fix <= 2 && total > 6) {
+      // 删掉多余
+      for (k = 0; k < fix; k++) if (nb.screws.length > 1) nb.screws.pop();
+    } else {
+      for (k = 0; k < fix; k++) {
+        var b2 = boards[0];
+        if (b2.shape === "circle") {
+          var a2 = k * 2.1 + 0.5;
+          b2.screws.push({ x: b2.x + Math.cos(a2) * b2.r * 0.5, y: b2.y + Math.sin(a2) * b2.r * 0.5, color: 0 });
+        } else {
+          b2.screws.push({ x: b2.x + (k - 1) * 30, y: b2.y, color: 0 });
+        }
+      }
+    }
+  }
+  total = 0;
+  for (i = 0; i < boards.length; i++) total += boards[i].screws.length;
+  if (total === 0 || total % 3 !== 0) return null;
+  // 颜色配额：每种颜色颗数都是 3 的倍数
+  var quota = [], remaining = total;
+  for (i = 0; i < P.colors; i++) quota.push(3);
+  remaining -= 3 * P.colors;
+  while (remaining > 0) {
+    var ci = Math.floor(rnd() * P.colors);
+    quota[ci] += 3; remaining -= 3;
+  }
+  var pool = [];
+  for (i = 0; i < P.colors; i++) for (k = 0; k < quota[i]; k++) pool.push(i);
+  // 洗牌
+  for (i = pool.length - 1; i > 0; i--) {
+    var j2 = Math.floor(rnd() * (i + 1));
+    var tmp = pool[i]; pool[i] = pool[j2]; pool[j2] = tmp;
+  }
+  var pi = 0;
+  for (i = 0; i < boards.length; i++) {
+    for (k = 0; k < boards[i].screws.length; k++) boards[i].screws[k].color = pool[pi++];
+  }
+  return { boards: boards, level: L, par: 10 + boards.length * 6 };
+}
+
+// 贪心可解性模拟：优先拧“槽里已有 2 颗同色”的螺丝（凑消），否则已有 1 颗的，再否则任意；
+// 全部拧完且槽从未溢出 = 可解
+function spGreedySolvable(boards, cap) {
+  var alive = [], left = [], i, k;
+  var remaining = 0;
+  for (i = 0; i < boards.length; i++) {
+    alive[i] = true; left[i] = boards[i].screws.length;
+    remaining += left[i];
+  }
+  var pend = {}; // color -> 槽内挂起颗数
+  var tray = 0;
+  var guard = 0;
+  while (remaining > 0 && guard++ < 4000) {
+    // 收集当前可拧螺丝（不被压住）
+    var best = null, bestScore = -1;
+    for (i = boards.length - 1; i >= 0; i--) {
+      if (!alive[i]) continue;
+      for (k = 0; k < boards[i].screws.length; k++) {
+        if (spScrewCovered(boards, alive, i, k)) continue;
+        var c2 = boards[i].screws[k].color;
+        var p = pend[c2] || 0;
+        var sc = p === 2 ? 100 : p === 1 ? 10 : 1;
+        if (sc > bestScore) { bestScore = sc; best = { b: i, c: c2 }; }
+      }
+      if (bestScore >= 100) break;
+    }
+    if (!best) return false; // 有剩余螺丝却全部被压住（理论不该发生）
+    var cleared = spTrayPushSim(pend, best.c);
+    tray = cleared ? tray - 2 : tray + 1;
+    if (tray > cap) return false;
+    remaining--;
+    left[best.b]--;
+    if (left[best.b] === 0) alive[best.b] = false; // 板掉落，解锁下层
+  }
+  return remaining === 0;
+}
+
+// 简化版：按“颜色计数”模拟即可（板约束已由可拧判定体现）
+function spTrayPushSim(pend, c) {
+  pend[c] = (pend[c] || 0) + 1;
+  if (pend[c] >= 3) { pend[c] = 0; return true; }
+  return false;
+}
+
+/* ===================== 应用部分（浏览器） ===================== */
+function boot() {
+var W = 480, H = 760;
+var canvas = document.getElementById("game");
+var ctx = canvas.getContext("2d");
+var dpr = Math.min(window.devicePixelRatio || 1, 2);
+canvas.width = W * dpr; canvas.height = H * dpr;
+ctx.scale(dpr, dpr);
+
+// ---- 自适应：canvas 等比缩放适配视口 ----
+function fit() {
+  var availH = window.innerHeight - 96, availW = window.innerWidth - 8;
+  var s = Math.min(availW / W, availH / H, 1);
+  canvas.style.width = Math.round(W * s) + "px";
+  canvas.style.height = Math.round(H * s) + "px";
+}
+window.addEventListener("resize", fit); fit();
+
+// ---- 音效 ----
+var actx = null, muted = false;
+try { muted = localStorage.getItem("sp_muted") === "1"; } catch (e) {}
+function audio() {
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+  } catch (e) {}
+  return actx;
+}
+function beep(freq, dur, type, gainv, slide) {
+  if (muted) return;
+  try {
+    var a = audio(); if (!a) return;
+    var o = a.createOscillator(), g = a.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), a.currentTime + dur);
+    g.gain.setValueAtTime(gainv || 0.1, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(); o.stop(a.currentTime + dur);
+  } catch (e) {}
+}
+// 金属拧出音：短促咔嗒三连，音高随机微变
+function sndUnscrew() {
+  for (var i = 0; i < 3; i++) {
+    var f = 900 + Math.random() * 260 - i * 120;
+    setTimeout(function (ff) { return function () { beep(ff, 0.05, "square", 0.05); }; }(f), i * 90);
+  }
+}
+function sndClear() { beep(523, 0.1, "triangle", 0.1); setTimeout(function(){beep(659,0.1,"triangle",0.1);},90); setTimeout(function(){beep(784,0.16,"triangle",0.12);},180); }
+function sndDeny() { beep(140, 0.12, "sawtooth", 0.08, -40); }
+function sndDrop() { beep(200, 0.18, "sine", 0.12, -120); }
+function sndWin() { [523,659,784,1047].forEach(function(f,i){ setTimeout(function(){beep(f,0.18,"triangle",0.12);}, i*140); }); }
+function sndFail() { beep(300,0.3,"sawtooth",0.1,-180); setTimeout(function(){beep(200,0.4,"sawtooth",0.1,-120);},200); }
+
+// ---- 进度 ----
+var progress = { unlocked: 1, stars: [] };
+try {
+  var raw = localStorage.getItem("sp_progress");
+  if (raw) { var p = JSON.parse(raw); if (p && p.unlocked) progress = p; }
+} catch (e) {}
+function saveProgress() { try { localStorage.setItem("sp_progress", JSON.stringify(progress)); } catch (e) {} }
+
+// ---- 状态 ----
+var screen = "menu"; // menu | play
+var lv = null, levelNum = 1;
+var alive = [], fallen = [], screws = []; // screws: 展平引用 {b, i, state:'idle'|'spin'|'gone', t, ang}
+var tray = [], capacity = SP_BASE_CAP, slotUsed = false;
+var score = 0, playTime = 0, playing = false, ended = false;
+var flying = [];   // 飞向槽位的螺丝
+var shakeT = 0, shakeScrew = null;
+var particles = [];
+
+function startLevel(n) {
+  levelNum = n;
+  lv = spGenLevel(n, (Date.now() & 0xffff) ^ (n * 2654435761));
+  alive = []; fallen = [];
+  screws = [];
+  for (var i = 0; i < lv.boards.length; i++) {
+    alive.push(true); fallen.push(null);
+    for (var k = 0; k < lv.boards[i].screws.length; k++) {
+      screws.push({ b: i, si: k, state: "idle", t: 0, ang: Math.random() * 6.28 });
+    }
+  }
+  tray = []; capacity = SP_BASE_CAP; slotUsed = false;
+  score = 0; playTime = 0; playing = true; ended = false;
+  flying = []; particles = [];
+  document.getElementById("overlay").style.display = "none";
+  document.getElementById("levelSel").style.display = "none";
+  document.getElementById("level").textContent = n;
+  document.getElementById("score").textContent = "0";
+  document.getElementById("slotBtn").disabled = false;
+  screen = "play";
+  try {
+    if (window.__portal === "crazygames" && window.CrazyGames && window.CrazyGames.SDK) {
+      window.CrazyGames.SDK.game.gameplayStart();
+    }
+  } catch (e) {}
+}
+
+function goMenu() {
+  playing = false; screen = "menu";
+  try {
+    if (window.__portal === "crazygames" && window.CrazyGames && window.CrazyGames.SDK) {
+      window.CrazyGames.SDK.game.gameplayStop();
+    }
+  } catch (e) {}
+  document.getElementById("overlay").style.display = "none";
+  buildGrid();
+  document.getElementById("levelSel").style.display = "flex";
+}
+
+function stopGameplay() {
+  try {
+    if (window.__portal === "crazygames" && window.CrazyGames && window.CrazyGames.SDK) {
+      window.CrazyGames.SDK.game.gameplayStop();
+    }
+  } catch (e) {}
+}
+
+function boardScrewsLeft(bi) {
+  var n = 0;
+  for (var i = 0; i < screws.length; i++) if (screws[i].b === bi && screws[i].state !== "gone") n++;
+  return n;
+}
+
+function addScore(v) {
+  score += v;
+  document.getElementById("score").textContent = score;
+}
+
+// 点击命中：自上而下找最近的螺丝（宽容半径）
+function pickScrew(x, y) {
+  var best = null, bestD = 1e9;
+  for (var i = screws.length - 1; i >= 0; i--) {
+    var s = screws[i];
+    if (s.state !== "idle" || !alive[s.b]) continue;
+    var ps = lv.boards[s.b].screws[s.si];
+    var d = (x - ps.x) * (x - ps.x) + (y - ps.y) * (y - ps.y);
+    if (d < 20 * 20 && d < bestD) { bestD = d; best = s; }
+  }
+  return best;
+}
+
+function tapPlay(x, y) {
+  if (!playing) return;
+  audio();
+  var s = pickScrew(x, y);
+  if (!s) return;
+  if (spScrewCovered(lv.boards, alive, s.b, s.si)) {
+    shakeT = 0.3; shakeScrew = s; sndDeny();
+    return;
+  }
+  var ps2 = lv.boards[s.b].screws[s.si];
+  if (tray.length + flying.length >= capacity) {
+    // 槽满：只有拧入即三消的螺丝才允许（腾出 2 格）
+    if (spCountColor(tray, flying, ps2.color) < 2) { sndDeny(); return; }
+  }
+  s.state = "spin"; s.t = 0.4;
+  sndUnscrew();
+}
+
+function finishScrew(s) {
+  s.state = "gone";
+  var ps = lv.boards[s.b].screws[s.si];
+  flying.push({ x: ps.x, y: ps.y, color: ps.color, t: 0, slot: tray.length + countFlying() });
+  // 板子掉落检测
+  if (boardScrewsLeft(s.b) === 0) {
+    alive[s.b] = false;
+    fallen[s.b] = { t: 0, vy: 0 };
+    addScore(5);
+    sndDrop();
+    checkWin();
+  }
+}
+function countFlying() { var n = 0; for (var i = 0; i < flying.length; i++) if (!flying[i].landed) n++; return n; }
+
+function landFlying(f) {
+  f.landed = true;
+  var cleared = spTrayPush(tray, f.color);
+  if (cleared) { addScore(10); sndClear(); fxTray(f.color); }
+  // 失败判定：槽满且无可消（没有任何未压螺丝能凑齐三消）
+  if (tray.length >= capacity && !spHasClearMove(lv.boards, alive, tray)) { failLevel(); }
+}
+
+function fxTray(color) {
+  var idx = -1;
+  for (var i = 0; i < 3; i++) {
+    particles.push({ x: W / 2 + (Math.random() * 2 - 1) * 80, y: 690, vx: (Math.random()*2-1)*60, vy: -120 - Math.random()*80, life: 0.5, color: SP_COLORS[color], size: 3 + Math.random() * 3 });
+  }
+}
+
+function checkWin() {
+  if (ended) return;
+  for (var i = 0; i < alive.length; i++) if (alive[i]) return;
+  // 等飞行螺丝全部落槽
+  if (flying.length > 0) return;
+  ended = true;
+  playing = false;
+  var stars = 1;
+  if (playTime <= lv.par) stars = 3; else if (playTime <= lv.par * 1.7) stars = 2;
+  if (levelNum >= progress.unlocked) progress.unlocked = Math.min(60, levelNum + 1);
+  progress.stars[levelNum - 1] = Math.max(progress.stars[levelNum - 1] || 0, stars);
+  saveProgress();
+  stopGameplay();
+  try { if (window.__portal === "crazygames" && window.CrazyGames) window.CrazyGames.SDK.game.happytime(); } catch (e) {}
+  sndWin();
+  showOverlay("Level Complete!", "Time " + Math.floor(playTime) + "s", stars, levelNum < 60 ? "Next" : "Levels");
+}
+
+function failLevel() {
+  if (ended) return;
+  ended = true;
+  playing = false;
+  stopGameplay();
+  sndFail();
+  showOverlay("Tray Full!", "No matching color — try again", 0, "Retry");
+}
+
+function showOverlay(title, text, stars, mainLabel) {
+  document.getElementById("ovTitle").textContent = title;
+  document.getElementById("ovText").textContent = text;
+  document.getElementById("ovStars").textContent = stars > 0 ? "★★★".slice(0, stars) + "☆☆☆".slice(0, 3 - stars) : "";
+  document.getElementById("mainBtn").textContent = mainLabel;
+  document.getElementById("overlay").style.display = "flex";
+}
+
+// ---- 关卡选择 ----
+function buildGrid() {
+  var g = document.getElementById("grid");
+  g.innerHTML = "";
+  for (var i = 1; i <= 60; i++) {
+    var btn = document.createElement("button");
+    btn.className = "lv" + (i > progress.unlocked ? " locked" : "");
+    btn.textContent = i;
+    var st = document.createElement("span");
+    st.className = "st";
+    var s = progress.stars[i - 1] || 0;
+    st.textContent = s > 0 ? "★".repeat(s) : "";
+    btn.appendChild(st);
+    (function (n) {
+      btn.addEventListener("click", function () {
+        if (n <= progress.unlocked) { audio(); startLevel(n); }
+        else sndDeny();
+      });
+    })(i);
+    g.appendChild(btn);
+  }
+}
+
+// ---- 渲染 ----
+function drawBoard(b, dy, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  var x = b.x, y = b.y + dy;
+  // 厚度侧影
+  ctx.fillStyle = "rgba(0,0,0,.35)";
+  if (b.shape === "circle") {
+    ctx.beginPath(); ctx.arc(x, y + 6, b.r, 0, 6.283); ctx.fill();
+  } else {
+    rr(x - b.w/2, y - b.h/2 + 6, b.w, b.h, 12); ctx.fill();
+  }
+  // 板体（半透明塑料感）
+  var col = "rgba(150,170,210,";
+  var g2;
+  if (b.shape === "circle") {
+    g2 = ctx.createRadialGradient(x - b.r*0.3, y - b.r*0.3, b.r*0.2, x, y, b.r);
+    g2.addColorStop(0, "rgba(255,255,255,.34)");
+    g2.addColorStop(0.35, "rgba(170,190,225,.30)");
+    g2.addColorStop(1, "rgba(90,105,150,.30)");
+    ctx.fillStyle = g2;
+    ctx.beginPath(); ctx.arc(x, y, b.r, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.lineWidth = 2; ctx.stroke();
+  } else {
+    g2 = ctx.createLinearGradient(0, y - b.h/2, 0, y + b.h/2);
+    g2.addColorStop(0, "rgba(255,255,255,.34)");
+    g2.addColorStop(0.4, "rgba(170,190,225,.30)");
+    g2.addColorStop(1, "rgba(90,105,150,.30)");
+    ctx.fillStyle = g2;
+    rr(x - b.w/2, y - b.h/2, b.w, b.h, 12); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.lineWidth = 2; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawScrew(x, y, color, ang, scale, dim) {
+  var r = 11 * (scale || 1);
+  ctx.save();
+  ctx.translate(x, y);
+  if (dim) ctx.globalAlpha = 0.55;
+  // 金属头
+  var g = ctx.createRadialGradient(-r*0.3, -r*0.3, r*0.15, 0, 0, r);
+  g.addColorStop(0, "#f4f6fb"); g.addColorStop(0.5, "#b9c1d6"); g.addColorStop(1, "#767f99");
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.283); ctx.fill();
+  ctx.strokeStyle = "#4a5166"; ctx.lineWidth = 1.5; ctx.stroke();
+  // 色环标识
+  ctx.beginPath(); ctx.arc(0, 0, r + 3, 0, 6.283);
+  ctx.strokeStyle = SP_COLORS[color]; ctx.lineWidth = 3; ctx.stroke();
+  // 十字槽（随 ang 旋转）
+  ctx.rotate(ang);
+  ctx.strokeStyle = "#3a4156"; ctx.lineWidth = 2.6; ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-r*0.55, 0); ctx.lineTo(r*0.55, 0);
+  ctx.moveTo(0, -r*0.55); ctx.lineTo(0, r*0.55);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawTray() {
+  var n = 9, sw = 46, gap = 4;
+  var total = n * sw + (n - 1) * gap;
+  var x0 = (W - total) / 2, y0 = 655, hh = 58;
+  // 金属导轨
+  var g = ctx.createLinearGradient(0, y0, 0, y0 + hh);
+  g.addColorStop(0, "#3d4256"); g.addColorStop(0.5, "#262a3a"); g.addColorStop(1, "#3d4256");
+  ctx.fillStyle = g;
+  rr(x0 - 10, y0, total + 20, hh, 12); ctx.fill();
+  ctx.strokeStyle = "#565d78"; ctx.lineWidth = 2; ctx.stroke();
+  for (var i = 0; i < n; i++) {
+    var sx = x0 + i * (sw + gap) + sw / 2, sy = y0 + hh / 2;
+    var locked = i >= capacity;
+    ctx.beginPath(); ctx.arc(sx, sy, 19, 0, 6.283);
+    ctx.fillStyle = locked ? "rgba(255,255,255,.03)" : "rgba(0,0,0,.4)";
+    ctx.fill();
+    ctx.strokeStyle = locked ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.14)";
+    ctx.lineWidth = 1.5; ctx.stroke();
+  }
+  for (var t = 0; t < tray.length; t++) {
+    var sx2 = x0 + t * (sw + gap) + sw / 2, sy2 = y0 + hh / 2;
+    drawScrew(sx2, sy2, tray[t], 0.6, 0.95, false);
+  }
+}
+
+var last = 0;
+function frame(t) {
+  var dt = Math.min((t - last) / 1000, 0.04); last = t;
+  // 背景
+  var bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#1c1c2e"); bg.addColorStop(1, "#101018");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  // 背板
+  ctx.fillStyle = "rgba(255,255,255,.03)";
+  rr(FIELD.x0 - 8, FIELD.y0 - 8, FIELD.x1 - FIELD.x0 + 16, FIELD.y1 - FIELD.y0 + 16, 16); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.06)"; ctx.lineWidth = 2;
+  rr(FIELD.x0 - 8, FIELD.y0 - 8, FIELD.x1 - FIELD.x0 + 16, FIELD.y1 - FIELD.y0 + 16, 16); ctx.stroke();
+
+  if (screen === "play" && lv) {
+    if (playing) playTime += dt;
+    document.getElementById("time").textContent = Math.floor(playTime);
+    // 掉落中的板
+    for (var i = 0; i < fallen.length; i++) {
+      var f = fallen[i];
+      if (!f) continue;
+      f.t += dt; f.vy += 900 * dt;
+      var dy = f.vy * f.t - 0.5 * 900 * f.t * f.t; // 弹跳近似：先落再由 alpha 淡出
+      var alpha = f.t < 0.7 ? 1 : Math.max(0, 1 - (f.t - 0.7) / 0.4);
+      if (f.t > 1.1) { fallen[i] = null; continue; }
+      drawBoard(lv.boards[i], Math.max(0, -dy) * -1 + Math.min(160, f.vy * f.t * 0.5), alpha);
+    }
+    // 存活板：从下层到上层
+    var order = [];
+    for (i = 0; i < lv.boards.length; i++) if (alive[i]) order.push(i);
+    order.sort(function (a, b2) { return a - b2; });
+    for (i = 0; i < order.length; i++) drawBoard(lv.boards[order[i]], 0, 1);
+    // 螺丝
+    for (i = 0; i < screws.length; i++) {
+      var s = screws[i];
+      if (s.state === "gone") continue;
+      var ps = lv.boards[s.b].screws[s.si];
+      if (s.state === "spin") {
+        s.t -= dt;
+        s.ang += dt * 22;
+        var wob = Math.sin(s.t * 40) * 2 * s.t;
+        if (s.t <= 0) finishScrew(s);
+        else drawScrew(ps.x, ps.y - wob, ps.color, s.ang, 1, false);
+      } else {
+        var covered = spScrewCovered(lv.boards, alive, s.b, s.si);
+        var dim = covered;
+        var scl = 1;
+        if (shakeT > 0 && shakeScrew === s) { scl = 1 + Math.sin(shakeT * 40) * 0.12; }
+        drawScrew(ps.x, ps.y, ps.color, s.ang, scl, dim);
+      }
+    }
+    if (shakeT > 0) shakeT -= dt;
+    // 飞行螺丝 → 槽位
+    var slotN = countFlying();
+    for (i = flying.length - 1; i >= 0; i--) {
+      var fl = flying[i];
+      if (fl.landed) { flying.splice(i, 1); continue; }
+      fl.t += dt / 0.45;
+      var sw2 = 46, gap2 = 4, tot = 9 * sw2 + 8 * gap2;
+      var tx = (W - tot) / 2 + fl.slot * (sw2 + gap2) + sw2 / 2, ty = 655 + 29;
+      var ex = tx, ey = ty;
+      var u = Math.min(1, fl.t);
+      var ease = u * u * (3 - 2 * u);
+      var fx = fl.x + (ex - fl.x) * ease;
+      var fy = fl.y + (ey - fl.y) * ease - Math.sin(u * Math.PI) * 90;
+      drawScrew(fx, fy, fl.color, fl.t * 12, 0.95, false);
+      if (fl.t >= 1) { landFlying(fl); flying.splice(i, 1); }
+      // 最后一颗螺丝落槽后补判过关（checkWin 在 finishScrew 时被飞行队列挡回）
+      if (!ended && flying.length === 0) {
+        var anyAlive = false;
+        for (var ai = 0; ai < alive.length; ai++) if (alive[ai]) { anyAlive = true; break; }
+        if (!anyAlive) checkWin();
+      }
+    }
+    // 粒子
+    for (i = particles.length - 1; i >= 0; i--) {
+      var pt = particles[i]; pt.life -= dt;
+      if (pt.life <= 0) { particles.splice(i, 1); continue; }
+      pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.vy += 300 * dt;
+      ctx.globalAlpha = Math.max(0, pt.life / 0.5);
+      ctx.fillStyle = pt.color;
+      ctx.fillRect(pt.x - pt.size / 2, pt.y - pt.size / 2, pt.size, pt.size);
+      ctx.globalAlpha = 1;
+    }
+    // 分数提示
+    ctx.fillStyle = "rgba(255,255,255,.35)";
+    ctx.font = "700 12px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("Tray " + tray.length + "/" + capacity, FIELD.x0 - 4, 640);
+  }
+  drawTray();
+  requestAnimationFrame(frame);
+}
+
+function rr(x, y, w, h, rad) {
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad);
+  ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad);
+  ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
+}
+
+// ---- 输入 ----
+function toGame(clientX, clientY) {
+  var rect = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) / rect.width * W,
+    y: (clientY - rect.top) / rect.height * H
+  };
+}
+canvas.addEventListener("mousedown", function (e) { var p = toGame(e.clientX, e.clientY); tapPlay(p.x, p.y); });
+canvas.addEventListener("touchstart", function (e) { e.preventDefault(); var t = e.touches[0]; var p = toGame(t.clientX, t.clientY); tapPlay(p.x, p.y); }, { passive: false });
+
+// ---- 按钮 ----
+document.getElementById("menuBtn").addEventListener("click", goMenu);
+document.getElementById("slotBtn").addEventListener("click", function () {
+  if (screen !== "play" || slotUsed || !playing) return;
+  slotUsed = true; capacity = SP_BASE_CAP + 1;
+  document.getElementById("slotBtn").disabled = true;
+  beep(700, 0.15, "triangle", 0.1);
+});
+document.getElementById("resetBtn").addEventListener("click", function () {
+  if (screen === "play") startLevel(levelNum);
+});
+document.getElementById("muteBtn").addEventListener("click", function () {
+  muted = !muted;
+  document.getElementById("muteBtn").textContent = muted ? "\u266a" : "\u266b";
+  try { localStorage.setItem("sp_muted", muted ? "1" : "0"); } catch (e) {}
+});
+document.getElementById("mainBtn").addEventListener("click", function () {
+  var label = document.getElementById("mainBtn").textContent;
+  if (label === "Next" && levelNum < 60) startLevel(levelNum + 1);
+  else if (label === "Retry") startLevel(levelNum);
+  else goMenu();
+});
+document.getElementById("ghostBtn").addEventListener("click", goMenu);
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape" && screen === "play") goMenu();
+  if ((e.key === "r" || e.key === "R") && screen === "play") startLevel(levelNum);
+});
+
+document.getElementById("muteBtn").textContent = muted ? "\u266a" : "\u266b";
+buildGrid();
+requestAnimationFrame(frame);
+// 调试/测试钩子
+window.__sp = {
+  startLevel: startLevel, goMenu: goMenu,
+  tapPlay: tapPlay,
+  get state() { return { screen: screen, playing: playing, tray: tray.slice(), capacity: capacity, score: score, level: levelNum }; },
+  get lv() { return lv; }, get alive() { return alive; }, get screws() { return screws; }
+};
+}
+if (typeof window !== "undefined" && typeof document !== "undefined" && document.getElementById) boot();
+</script>
+</body>
+</html>
